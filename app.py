@@ -113,25 +113,10 @@ if df is not None and mapping is not None:
         # Show subtle indicator that insights are loaded from cache
         st.caption("💡 Using cached insights - instant performance!")
 
-    # Preserve tab selection
-    if "current_tab" not in st.session_state:
-        st.session_state.current_tab = "AI Assistant"
-    
     # Define tab names
     tab_names = ["Overview", "Products", "Customers", "Customer Cohorts", "Customer Segments", "Forecast", "AI Assistant"]
     
     tabs = st.tabs(tab_names)
-    
-    # Update tab selection when user clicks and preserve AI Assistant tab preference
-    for i, tab_name in enumerate(tab_names):
-        if tabs[i].is_active():
-            # If user is on AI Assistant tab, remember it
-            if tab_name == "AI Assistant":
-                st.session_state.current_tab = "AI Assistant"
-            # If user clicks other tabs, update but don't override AI Assistant preference
-            elif st.session_state.current_tab != "AI Assistant":
-                st.session_state.current_tab = tab_name
-            break
     with tabs[0]:
         render_overview_tab(filtered_df, results, mapping, active_filters)
     with tabs[1]:
