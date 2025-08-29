@@ -134,7 +134,6 @@ def render_ai_tab(df, results, mapping, flt):
     
     # Add a navigation helper to ensure users can always get back to AI Assistant
     if st.button("🔄 Refresh AI Assistant", help="Click if you're having navigation issues"):
-        st.session_state.current_tab = "AI Assistant"
         st.session_state.selected_question = None
         st.rerun()
 
@@ -206,19 +205,17 @@ def render_ai_tab(df, results, mapping, flt):
                             # Available question - show as clickable button
                             button_key = f"q_{category_key}_{q_id}"
                             
-                            # Use a more stable button approach with form
-                            with st.form(key=f"form_{button_key}", clear_on_submit=False):
-                                submitted = st.form_submit_button(
-                                    f"{question['icon']} {question['text']}", 
-                                    use_container_width=True,
-                                    help=f"Get detailed analysis for: {question['text']}",
-                                    type="secondary"
-                                )
-                                if submitted:
-                                    # Store the selected question and ensure we stay on AI tab
-                                    st.session_state.selected_question = q_id
-                                    st.session_state.current_tab = "AI Assistant"
-                                    st.rerun()
+                            # Use a simple button approach that works reliably
+                            if st.button(
+                                f"{question['icon']} {question['text']}", 
+                                key=button_key,
+                                use_container_width=True,
+                                help=f"Get detailed analysis for: {question['text']}",
+                                type="secondary"
+                            ):
+                                # Store the selected question
+                                st.session_state.selected_question = q_id
+                                st.rerun()
                         else:
                             # Unavailable question - show as disabled with reason
                             st.markdown(f"~~{question['icon']} {question['text']}~~")
@@ -262,12 +259,10 @@ def render_ai_tab(df, results, mapping, flt):
         with col1:
             if st.button("🔄 Ask Another Question", type="secondary"):
                 st.session_state.selected_question = None
-                st.session_state.current_tab = "AI Assistant"
                 st.rerun()
         with col2:
             if st.button("📊 Show Data Context", type="secondary"):
                 st.session_state.show_context = not st.session_state.get("show_context", False)
-                st.session_state.current_tab = "AI Assistant"
                 st.rerun()
         with col3:
             if st.button("💾 Save Answer", type="secondary"):
@@ -279,7 +274,6 @@ def render_ai_tab(df, results, mapping, flt):
                     "answer": answer,
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 })
-                st.session_state.current_tab = "AI Assistant"
                 st.success("Answer saved! 📝")
     
     # Show context information in an expander (only when requested)
@@ -294,7 +288,6 @@ def render_ai_tab(df, results, mapping, flt):
         # Add a button to hide context
         if st.button("👁️ Hide Context"):
             st.session_state.show_context = False
-            st.session_state.current_tab = "AI Assistant"
             st.rerun()
     
     # Show saved answers if any
@@ -306,5 +299,4 @@ def render_ai_tab(df, results, mapping, flt):
                 st.markdown(saved['answer'])
                 if st.button(f"🗑️ Delete", key=f"delete_{i}"):
                     st.session_state.saved_answers.pop(i)
-                    st.session_state.current_tab = "AI Assistant"
                     st.rerun()
