@@ -168,11 +168,30 @@ def render_ai_tab(df, results, mapping, flt):
     context_summary = smart_questions.get_context_summary(context_data, results)
     st.markdown(context_summary)
     
-    # Show industry context
+    # Show industry context with more detailed information
     if industry != "generic":
         industry_icons = {"retail": "🏪", "saas": "☁️", "marketplace": "🛒"}
         industry_names = {"retail": "Retail", "saas": "SaaS", "marketplace": "Marketplace"}
-        st.info(f"{industry_icons.get(industry, '🏢')} **{industry_names.get(industry, 'Business')} Industry Mode**: Questions tailored for {industry_names.get(industry, 'your business type')}")
+        
+        # Get industry-specific question count
+        industry_questions = {
+            "retail": 4,  # store_performance, inventory_turnover, seasonal_planning, promotional_effectiveness
+            "saas": 5,    # mrr_growth, churn_analysis, feature_adoption, pricing_optimization, customer_success
+            "marketplace": 5  # seller_performance, buyer_behavior, network_effects, commission_optimization, liquidity_analysis
+        }
+        
+        question_count = industry_questions.get(industry, 0)
+        
+        st.success(f"""
+        {industry_icons.get(industry, '🏢')} **{industry_names.get(industry, 'Business')} Industry Mode Active**
+        
+        You have access to **{question_count} additional industry-specific questions** plus all standard business intelligence questions.
+        
+        **Industry-specific insights include:**
+        {self._get_industry_question_preview(industry)}
+        """)
+    else:
+        st.info("🏢 **Generic Mode**: You're using standard business intelligence questions. Switch to a specific industry for tailored insights!")
     
     # Create a beautiful question selector
     st.markdown("### 📋 Select Your Question")

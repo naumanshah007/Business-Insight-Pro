@@ -2631,3 +2631,12 @@ Liquidity measures how easily buyers and sellers can complete transactions on yo
             summary_lines.append("- **Channel**: Should identify the sales channel for channel analysis")
         
         return "\n".join(summary_lines)
+
+    def _get_industry_question_preview(self, industry: str) -> str:
+        """Get a preview of industry-specific questions."""
+        industry_previews = {
+            "retail": "🏪 Store performance, inventory turnover, seasonal planning, promotional effectiveness",
+            "saas": "☁️ MRR growth, churn analysis, feature adoption, pricing optimization, customer success",
+            "marketplace": "🛒 Seller performance, buyer behavior, network effects, commission optimization, liquidity analysis"
+        }
+        return industry_previews.get(industry, "Standard business intelligence questions")

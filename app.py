@@ -45,11 +45,6 @@ with st.sidebar:
     st.header("Setup")
     upl = st.file_uploader("Upload CSV / Excel / Parquet", type=["csv","xlsx","xls","parquet"])
     st.caption("Tip: include: date • amount • order_id • customer_id • (product) • (channel)")
-    st.divider()
-    st.subheader("Industry preset")
-    preset = st.selectbox("Preset", ["Generic","Retail","SaaS","Marketplace"], index=0)
-    # Store industry preset in session state for smart questions
-    st.session_state["industry_preset"] = preset
     st.subheader("Report")
     export_btn = st.button("📄 Export HTML Report")
 
@@ -59,6 +54,69 @@ if upl is not None:
     try:
         df = read_any(upl)
         st.success(f"Loaded data: {df.shape[0]} rows, {df.shape[1]} columns.")
+        
+        # Industry Selection Section
+        st.markdown("---")
+        st.subheader("🏢 **Choose Your Industry Type**")
+        st.caption("Select your industry to get tailored insights and recommendations")
+        
+        # Industry selection with detailed explanations
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            preset = st.selectbox(
+                "Industry Type",
+                ["Generic", "Retail", "SaaS", "Marketplace"],
+                index=0,
+                help="Choose the industry that best matches your business"
+            )
+            # Store industry preset in session state for smart questions
+            st.session_state["industry_preset"] = preset
+        
+        with col2:
+            # Show industry-specific information
+            industry_info = {
+                "Generic": {
+                    "icon": "🏢",
+                    "description": "General business analysis for any industry",
+                    "features": ["Standard KPIs", "Basic trend analysis", "General insights"],
+                    "best_for": "Any business type or mixed data"
+                },
+                "Retail": {
+                    "icon": "🏪",
+                    "description": "Specialized for physical and online retail businesses",
+                    "features": ["Store performance", "Inventory turnover", "Seasonal planning", "Promotional effectiveness"],
+                    "best_for": "E-commerce, brick-and-mortar stores, retail chains"
+                },
+                "SaaS": {
+                    "icon": "☁️",
+                    "description": "Optimized for software-as-a-service companies",
+                    "features": ["MRR growth", "Churn analysis", "Feature adoption", "Customer success", "Pricing optimization"],
+                    "best_for": "Software companies, subscription services, SaaS platforms"
+                },
+                "Marketplace": {
+                    "icon": "🛒",
+                    "description": "Designed for multi-sided marketplace platforms",
+                    "features": ["Seller performance", "Buyer behavior", "Network effects", "Commission optimization", "Liquidity analysis"],
+                    "best_for": "E-commerce marketplaces, service platforms, peer-to-peer platforms"
+                }
+            }
+            
+            selected_info = industry_info[preset]
+            st.markdown(f"""
+            **{selected_info['icon']} {preset} Industry**
+            
+            {selected_info['description']}
+            
+            **Key Features:**
+            {chr(10).join([f"• {feature}" for feature in selected_info['features']])}
+            
+            **Best For:** {selected_info['best_for']}
+            """)
+        
+        # Show what changes with industry selection
+        st.info(f"💡 **Industry Mode Active**: Your analysis will now include {preset.lower()}-specific insights, questions, and recommendations.")
+        
     except Exception as e:
         st.error(f"Failed to read file: {e}")
 
@@ -70,6 +128,12 @@ if df is not None:
         st.json(quick_profile(df))
 
     st.subheader("🧭 Column Mapping")
+    
+    # Show industry impact on mapping suggestions
+    if preset != "Generic":
+        industry_icons = {"Retail": "🏪", "SaaS": "☁️", "Marketplace": "🛒"}
+        st.info(f"{industry_icons.get(preset, '🏢')} **{preset} Industry Mode**: Column mapping suggestions are optimized for {preset.lower()} businesses.")
+    
     sugg = suggest_mappings(df, industry=preset.lower())
     selected = mapping_widget(df, suggestions=sugg)
 
