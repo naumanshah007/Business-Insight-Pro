@@ -129,13 +129,41 @@ def render_ai_tab(df, results, mapping, flt):
     from core.smart_questions import SmartQuestionSystem
     from datetime import datetime
 
+    # Add mobile-friendly CSS
+    st.markdown("""
+    <style>
+    @media (max-width: 768px) {
+        .stButton > button {
+            font-size: 14px !important;
+            padding: 8px 16px !important;
+            height: auto !important;
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px !important;
+        }
+        .stTabs [data-baseweb="tab"] {
+            height: 40px !important;
+            font-size: 12px !important;
+        }
+        .stMarkdown {
+            font-size: 14px !important;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.subheader("🤖 Smart Business Intelligence")
     st.caption("Get instant, intelligent answers to your business questions without external APIs.")
     
-    # Add a navigation helper to ensure users can always get back to AI Assistant
-    if st.button("🔄 Refresh AI Assistant", help="Click if you're having navigation issues"):
+    # Ensure we stay on the AI Assistant tab - More robust approach
+    if "current_tab" not in st.session_state:
+        st.session_state["current_tab"] = "AI Assistant"
+    else:
+        st.session_state["current_tab"] = "AI Assistant"
+    
+    # Initialize selected question if not exists
+    if "selected_question" not in st.session_state:
         st.session_state.selected_question = None
-        st.rerun()
 
     # Initialize the smart questions system with industry context
     # Get industry from session state or default to generic
@@ -168,77 +196,108 @@ def render_ai_tab(df, results, mapping, flt):
     context_summary = smart_questions.get_context_summary(context_data, results)
     st.markdown(context_summary)
     
-    # Show industry context with more detailed information
+    # Professional Header Section
+    st.markdown("---")
+    
+    # Industry Status Banner - Mobile Responsive
     if industry != "generic":
         industry_icons = {"retail": "🏪", "saas": "☁️", "marketplace": "🛒"}
         industry_names = {"retail": "Retail", "saas": "SaaS", "marketplace": "Marketplace"}
         
-        # Get industry-specific question count
-        industry_questions = {
-            "retail": 4,  # store_performance, inventory_turnover, seasonal_planning, promotional_effectiveness
-            "saas": 5,    # mrr_growth, churn_analysis, feature_adoption, pricing_optimization, customer_success
-            "marketplace": 5  # seller_performance, buyer_behavior, network_effects, commission_optimization, liquidity_analysis
-        }
-        
-        question_count = industry_questions.get(industry, 0)
-        
-        st.success(f"""
-        {industry_icons.get(industry, '🏢')} **{industry_names.get(industry, 'Business')} Industry Mode Active**
-        
-        You have access to **{question_count} additional industry-specific questions** plus all standard business intelligence questions.
-        
-        **Industry-specific insights include:**
-        {self._get_industry_question_preview(industry)}
-        """)
+        # Mobile responsive layout
+        st.markdown(f"""
+        <div style="background: linear-gradient(90deg, #f0f9ff 0%, #e0f2fe 100%); padding: 20px; border-radius: 15px; border-left: 4px solid #0284c7; margin-bottom: 15px;">
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+            <h4 style="margin: 0; color: #0c4a6e; font-size: 18px;">{industry_icons.get(industry, '🏢')} {industry_names.get(industry, 'Business')} Industry Mode</h4>
+            <div style="margin-left: auto; background: #ecfdf5; padding: 5px 10px; border-radius: 5px; border: 1px solid #a7f3d0;">
+                <span style="color: #065f46; font-size: 12px; font-weight: bold;">✓ Active</span>
+            </div>
+        </div>
+        <p style="margin: 0 0 10px 0; color: #0369a1; font-size: 14px;">Tailored insights for {industry.lower()} businesses</p>
+        <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <p style="margin: 0; color: #475569; font-size: 13px;"><strong>Available Insights:</strong> {smart_questions._get_industry_question_preview(industry)}</p>
+        </div>
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        st.info("🏢 **Generic Mode**: You're using standard business intelligence questions. Switch to a specific industry for tailored insights!")
+        st.info("🏢 **Standard Business Intelligence Mode** - Switch to a specific industry for tailored insights")
     
-    # Create a beautiful question selector
-    st.markdown("### 📋 Select Your Question")
-    
-    # Show question availability stats
+    # Question Availability Summary - Mobile Responsive
     total_available = sum(cat["available_count"] for cat in available_questions.values())
     total_questions = sum(cat["total_count"] for cat in available_questions.values())
-    st.success(f"🎯 **{total_available} out of {total_questions} questions available** based on your data context")
     
-    # Create tabs for each category that has available questions
+    st.markdown(f"""
+    <div style="background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%); padding: 25px; border-radius: 15px; text-align: center; border: 2px solid #f59e0b; margin: 20px 0;">
+    <h3 style="margin: 0 0 15px 0; color: #92400e; font-size: 20px;">📊 Business Intelligence Dashboard</h3>
+    <div style="background: rgba(255,255,255,0.3); padding: 15px; border-radius: 10px; margin: 10px 0;">
+        <p style="margin: 0; color: #78350f; font-size: 18px; font-weight: bold;"><strong>{total_available} of {total_questions}</strong> insights available</p>
+    </div>
+    <p style="margin: 10px 0 0 0; color: #92400e; font-size: 14px;">Select a question below for detailed analysis</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Professional Question Selection Interface
+    st.markdown("---")
+    
     if available_questions:
-        category_tabs = st.tabs([f"{cat['title']} ({cat['available_count']}/{cat['total_count']})" for cat in available_questions.values()])
+        # Create main tabs for available categories only
+        available_categories = [cat for cat in available_questions.values() if cat["available_count"] > 0]
+        category_tabs = st.tabs([f"{cat['title']} ({cat['available_count']})" for cat in available_categories])
         
         # Use session state to remember selected question
         if "selected_question" not in st.session_state:
             st.session_state.selected_question = None
         
         # Render each category tab
-        for i, (category_key, category) in enumerate(available_questions.items()):
+        for i, category in enumerate(available_categories):
             with category_tabs[i]:
-                st.markdown(f"**{category['title']}**")
-                st.caption(f"Click on any question to get an intelligent analysis. {category['available_count']} questions available.")
+                # Professional category header
+                st.markdown(f"""
+                <div style="background: #f8fafc; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                <h4 style="margin: 0 0 10px 0; color: #1e293b;">{category['title']}</h4>
+                <p style="margin: 0; color: #64748b; font-size: 14px;">Click any question below for comprehensive analysis</p>
+                </div>
+                """, unsafe_allow_html=True)
                 
-                # Create columns for better layout
-                cols = st.columns(2)
-                for j, (q_id, question) in enumerate(category["questions"].items()):
-                    col_idx = j % 2
-                    with cols[col_idx]:
-                        if question.get("available", True):
-                            # Available question - show as clickable button
-                            button_key = f"q_{category_key}_{q_id}"
-                            
-                            # Use a simple button approach that works reliably
-                            if st.button(
-                                f"{question['icon']} {question['text']}", 
-                                key=button_key,
-                                use_container_width=True,
-                                help=f"Get detailed analysis for: {question['text']}",
-                                type="secondary"
-                            ):
-                                # Store the selected question
-                                st.session_state.selected_question = q_id
-                                st.rerun()
-                        else:
-                            # Unavailable question - show as disabled with reason
-                            st.markdown(f"~~{question['icon']} {question['text']}~~")
-                            st.caption(f"❌ **Unavailable**: {question.get('unavailable_reason', 'Data not available')}")
+                # Mobile responsive question layout
+                available_questions_list = [q for q in category["questions"].items() if q[1].get("available", True)]
+                
+                # Single column layout for mobile responsiveness
+                for j, (q_id, question) in enumerate(available_questions_list):
+                    # Professional question card with mobile-friendly styling
+                    button_key = f"q_{category['title'].replace(' ', '_').lower()}_{q_id}"
+                    
+                    if st.button(
+                        f"{question['icon']} {question['text']}", 
+                        key=button_key,
+                        use_container_width=True,
+                        help=f"Get detailed analysis for: {question['text']}",
+                        type="primary"
+                    ):
+                        st.session_state.selected_question = q_id
+        
+        # Show unavailable questions in a collapsible section
+        all_unavailable = []
+        for category in available_questions.values():
+            for q_id, question in category["questions"].items():
+                if not question.get("available", True):
+                    all_unavailable.append((category['title'], question))
+        
+        if all_unavailable:
+            with st.expander("🔍 View Unavailable Questions (Require Additional Data)", expanded=False):
+                st.markdown("""
+                <div style="background: #fef2f2; padding: 15px; border-radius: 8px; border-left: 4px solid #ef4444;">
+                <p style="margin: 0; color: #991b1b; font-size: 14px;"><strong>Note:</strong> These questions require additional data mapping or more comprehensive datasets to provide meaningful insights.</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                for category_title, question in all_unavailable:
+                    st.markdown(f"""
+                    <div style="background: #f9fafb; padding: 10px; border-radius: 5px; margin: 5px 0; border-left: 3px solid #d1d5db;">
+                    <p style="margin: 0; color: #6b7280; font-size: 13px;"><strong>{category_title}:</strong> {question['icon']} {question['text']}</p>
+                    <p style="margin: 2px 0 0 0; color: #9ca3af; font-size: 12px;">❌ {question.get('unavailable_reason', 'Data not available')}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
     else:
         st.warning("⚠️ **No questions available** with your current data context.")
         st.markdown("**To enable questions, ensure you have:**")
@@ -248,10 +307,9 @@ def render_ai_tab(df, results, mapping, flt):
         st.markdown("- 📦 Product column mapped for product analysis")
         st.markdown("- 🛣️ Channel column mapped for channel performance")
 
-    # Display the answer if a question is selected
+    # Professional Answer Display Section
     if st.session_state.selected_question:
         st.markdown("---")
-        st.markdown("### 💡 **Intelligent Analysis**")
         
         # Get the selected question details
         selected_question = st.session_state.selected_question
@@ -263,28 +321,45 @@ def render_ai_tab(df, results, mapping, flt):
                 question_details = category["questions"][selected_question]
                 break
         
-        if question_details:
-            st.markdown(f"**🎯 Question**: {question_details['icon']} {question_details['text']}")
+        # Professional Analysis Header - Mobile Responsive
+        st.markdown(f"""
+        <div style="background: linear-gradient(90deg, #1e40af 0%, #3b82f6 100%); padding: 25px; border-radius: 15px; color: white; margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+            <h2 style="margin: 0; color: white; font-size: 22px;">💡 Executive Intelligence Report</h2>
+            <div style="background: rgba(255,255,255,0.2); padding: 8px 12px; border-radius: 8px;">
+                <p style="margin: 0; color: white; font-size: 12px; font-weight: bold;">{datetime.now().strftime("%H:%M")}</p>
+            </div>
+        </div>
+        <p style="margin: 0; font-size: 16px; opacity: 0.9;">{question_details['icon']} {question_details['text'] if question_details else selected_question}</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # Generate answer instantly using pre-built context
-        with st.spinner("🔍 Generating intelligent analysis..."):
+        # Generate and display answer
+        with st.spinner("🔍 Generating executive analysis..."):
             answer = smart_questions.generate_answer(selected_question, context_data, results)
         
-        # Display the answer in a beautiful container
-        st.markdown(answer)
+        # Professional answer container
+        st.markdown(f"""
+        <div style="background: #ffffff; padding: 30px; border-radius: 15px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); margin: 20px 0;">
+        {answer}
+        </div>
+        """, unsafe_allow_html=True)
         
-        # Add action buttons
-        col1, col2, col3 = st.columns([1, 1, 1])
+        # Professional action buttons - Mobile Responsive
+        st.markdown("---")
+        
+        # Mobile-friendly button layout
+        if st.button("🔄 New Analysis", type="primary", use_container_width=True):
+            st.session_state.selected_question = None
+        
+        # Secondary actions in a more compact layout
+        col1, col2 = st.columns(2)
         with col1:
-            if st.button("🔄 Ask Another Question", type="secondary"):
-                st.session_state.selected_question = None
-                st.rerun()
-        with col2:
-            if st.button("📊 Show Data Context", type="secondary"):
+            if st.button("📊 Data Context", type="secondary", use_container_width=True):
                 st.session_state.show_context = not st.session_state.get("show_context", False)
-                st.rerun()
-        with col3:
-            if st.button("💾 Save Answer", type="secondary"):
+        
+        with col2:
+            if st.button("💾 Save Report", type="secondary", use_container_width=True):
                 # Save answer to session state for potential export
                 if "saved_answers" not in st.session_state:
                     st.session_state.saved_answers = []
@@ -293,29 +368,62 @@ def render_ai_tab(df, results, mapping, flt):
                     "answer": answer,
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 })
-                st.success("Answer saved! 📝")
+                st.success("📝 Report saved to executive summary")
+        
+        # Export button in its own row for mobile
+        if st.button("📋 Export Report", type="secondary", use_container_width=True):
+            st.info("📄 Export functionality coming soon")
     
-    # Show context information in an expander (only when requested)
+    # Professional Context Display (only when requested)
     if st.session_state.get("show_context", False):
         st.markdown("---")
-        st.markdown("### 📊 **Data Context Available**")
-        st.markdown("**Business Context:**")
-        st.markdown(context_data["context_md"])
-        st.markdown("**Recent Activity Summary:**")
-        st.markdown(context_data["sql_md"])
+        st.markdown(f"""
+        <div style="background: linear-gradient(90deg, #f0fdf4 0%, #dcfce7 100%); padding: 25px; border-radius: 15px; border: 2px solid #22c55e;">
+        <h3 style="margin: 0 0 15px 0; color: #166534;">📊 Data Foundation & Context</h3>
+        <p style="margin: 0; color: #15803d; font-size: 14px;">This analysis is based on your business data and market context</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # Add a button to hide context
-        if st.button("👁️ Hide Context"):
-            st.session_state.show_context = False
-            st.rerun()
+        # Mobile responsive context layout
+        st.markdown("""
+        <div style="background: #f8fafc; padding: 20px; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 15px;">
+        <h4 style="margin: 0 0 15px 0; color: #1e293b;">Business Context</h4>
+        """, unsafe_allow_html=True)
+        st.markdown(context_data["context_md"])
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        st.markdown("""
+        <div style="background: #f8fafc; padding: 20px; border-radius: 10px; border: 1px solid #e2e8f0;">
+        <h4 style="margin: 0 0 15px 0; color: #1e293b;">Recent Activity Summary</h4>
+        """, unsafe_allow_html=True)
+        st.markdown(context_data["sql_md"])
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Professional hide button
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            if st.button("👁️ Hide Data Context", type="secondary", use_container_width=True):
+                st.session_state.show_context = False
     
-    # Show saved answers if any
+    # Professional Saved Reports Section
     if st.session_state.get("saved_answers"):
         st.markdown("---")
-        st.markdown("### 💾 **Saved Answers**")
+        st.markdown(f"""
+        <div style="background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%); padding: 25px; border-radius: 15px; border: 2px solid #f59e0b;">
+        <h3 style="margin: 0 0 10px 0; color: #92400e;">💾 Executive Summary Reports</h3>
+        <p style="margin: 0; color: #78350f; font-size: 14px;">Your saved intelligence reports for executive review</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
         for i, saved in enumerate(st.session_state.saved_answers):
-            with st.expander(f"📝 {saved['question']} ({saved['timestamp']})", expanded=False):
-                st.markdown(saved['answer'])
-                if st.button(f"🗑️ Delete", key=f"delete_{i}"):
-                    st.session_state.saved_answers.pop(i)
-                    st.rerun()
+            with st.expander(f"📋 {saved['question']} - {saved['timestamp']}", expanded=False):
+                st.markdown(f"""
+                <div style="background: #ffffff; padding: 20px; border-radius: 10px; border: 1px solid #e2e8f0; margin: 10px 0;">
+                {saved['answer']}
+                </div>
+                """, unsafe_allow_html=True)
+                
+                col1, col2, col3 = st.columns([1, 1, 1])
+                with col2:
+                    if st.button(f"🗑️ Remove Report", key=f"delete_{i}", type="secondary", use_container_width=True):
+                        st.session_state.saved_answers.pop(i)

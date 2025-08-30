@@ -1,5 +1,4 @@
 """
-core/smart_questions.py
 Smart question system with pre-crafted, intelligent answers based on business analytics context.
 Replaces external API calls with beautiful, contextual responses.
 """
@@ -12,7 +11,8 @@ import numpy as np
 class SmartQuestionSystem:
     """Intelligent question answering system for business analytics."""
     
-    def __init__(self):
+    def __init__(self, industry: str = "generic"):
+        self.industry = industry.lower()
         self.questions = self._build_question_catalog()
     
     def _build_question_catalog(self) -> Dict[str, Dict]:
@@ -622,21 +622,46 @@ class SmartQuestionSystem:
     def _answer_seasonality(self, context: Dict, results: Dict) -> str:
         """Generate seasonality analysis."""
         trend_data = results.get("trend", {})
-        trend_points = trend_data.get("trend", [])
+        
+        # Handle different trend data structures
+        if "table" in trend_data:
+            trend_df = trend_data["table"]
+            if isinstance(trend_df, pd.DataFrame) and not trend_df.empty:
+                trend_points = trend_df.to_dict('records')
+            else:
+                trend_points = []
+        else:
+            trend_points = trend_data.get("trend", [])
         
         if len(trend_points) < 12:
-            return "🌦️ **Seasonality Analysis**\n\n*Need at least 12 months of data to detect seasonal patterns.*"
+            # Add debugging information
+            debug_info = f"""
+**Debug Information**:
+- Trend data type: {type(trend_data)}
+- Trend table exists: {'table' in trend_data}
+- Trend points count: {len(trend_points)}
+- First few trend points: {trend_points[:3] if trend_points else 'None'}
+- Data range: {trend_points[0].get('month', 'Start')} to {trend_points[-1].get('month', 'End') if trend_points else 'N/A'}
+"""
+            return f"🌦️ **Seasonality Analysis**\n\n*Need at least 12 months of data to detect seasonal patterns. Currently have {len(trend_points)} months of data.*\n\n{debug_info}"
         
         # Group by month to identify seasonal patterns
         monthly_avg = {}
         for point in trend_points:
             month = point.get("month", "")
-            if len(month) >= 7:  # YYYY-MM format
+            
+            # Handle different month formats (Timestamp, string, etc.)
+            if hasattr(month, 'month'):  # Pandas Timestamp object
+                month_name = str(month.month).zfill(2)  # Get month as MM format
+            elif isinstance(month, str) and len(month) >= 7:  # String format YYYY-MM
                 month_name = month.split("-")[1]  # Extract MM
-                revenue = point.get("revenue", 0)
-                if month_name not in monthly_avg:
-                    monthly_avg[month_name] = []
-                monthly_avg[month_name].append(revenue)
+            else:
+                continue  # Skip invalid month formats
+            
+            revenue = point.get("revenue", 0)
+            if month_name not in monthly_avg:
+                monthly_avg[month_name] = []
+            monthly_avg[month_name].append(revenue)
         
         if not monthly_avg:
             return "🌦️ **Seasonality Analysis**\n\n*Unable to analyze seasonal patterns with current data format.*"
@@ -663,12 +688,22 @@ class SmartQuestionSystem:
         else:
             strength_text = "🌦️ **Strong seasonality** - significant seasonal patterns detected"
         
+        # Convert month numbers to month names
+        month_names = {
+            "01": "January", "02": "February", "03": "March", "04": "April",
+            "05": "May", "06": "June", "07": "July", "08": "August",
+            "09": "September", "10": "October", "11": "November", "12": "December"
+        }
+        
+        peak_month = month_names.get(high_season[0], f"Month {high_season[0]}")
+        low_month = month_names.get(low_season[0], f"Month {low_season[0]}")
+        
         return f"""🌦️ **Seasonality Analysis**
 
 **Seasonal Strength**: {strength_text}
 
-**Peak Season**: **Month {high_season[0]}** - Average Revenue: **${high_season[1]:,.0f}**
-**Low Season**: **Month {low_season[0]}** - Average Revenue: **${low_season[1]:,.0f}**
+**Peak Season**: **{peak_month}** - Average Revenue: **${high_season[1]:,.0f}**
+**Low Season**: **{low_month}** - Average Revenue: **${low_season[1]:,.0f}**
 **Overall Average**: **${avg_revenue:,.0f}**
 
 **Seasonal Variation**: **{seasonality_strength:.1%}** of total variance
@@ -1323,23 +1358,104 @@ This question requires specific analysis. Please select from our curated questio
 
     def _answer_inventory_turnover(self, context: Dict, results: Dict) -> str:
         """Generate inventory turnover analysis."""
-        return """🔄 **Inventory Turnover Analysis**
+        # Extract data from results
+        kpis_data = results.get("kpis", {})
+        if isinstance(kpis_data, dict) and "kpis" in kpis_data:
+            kpis = kpis_data["kpis"]
+        else:
+            kpis = kpis_data
+        
+        trend_data = results.get("trend", {})
+        if "table" in trend_data:
+            trend_df = trend_data["table"]
+            if isinstance(trend_df, pd.DataFrame) and not trend_df.empty:
+                trend_points = trend_df.to_dict('records')
+            else:
+                trend_points = []
+        else:
+            trend_points = trend_data.get("trend", [])
+        
+        # Get product data
+        products_data = results.get("top_products", {})
+        if "table" in products_data:
+            products_df = products_data["table"]
+            if isinstance(products_df, pd.DataFrame) and not products_df.empty:
+                products = products_df.to_dict('records')
+            else:
+                products = []
+        else:
+            products = products_data.get("products", [])
+        
+        # Calculate inventory turnover metrics
+        total_sales = kpis.get("total_sales", 0) if kpis else 0
+        total_orders = kpis.get("total_orders", 0) if kpis else 0
+        avg_order_value = kpis.get("avg_order_value", 0) if kpis else 0
+        
+        # Estimate inventory turnover based on sales velocity
+        if total_orders > 0 and len(trend_points) >= 3:
+            # Calculate monthly sales velocity
+            recent_months = trend_points[-3:] if len(trend_points) >= 3 else trend_points
+            monthly_sales = sum(point.get("revenue", 0) for point in recent_months) / len(recent_months)
+            
+            # Estimate inventory turnover (simplified calculation)
+            # Assuming inventory is roughly 1-2 months of sales
+            estimated_inventory = monthly_sales * 1.5  # Conservative estimate
+            if estimated_inventory > 0:
+                turnover_rate = (monthly_sales * 12) / estimated_inventory
+            else:
+                turnover_rate = 0
+        else:
+            turnover_rate = 0
+            monthly_sales = 0
+            estimated_inventory = 0
+        
+        # Determine performance level
+        if turnover_rate >= 6:
+            performance_level = "🟢 Excellent"
+            performance_desc = "Your inventory turnover is above industry standards"
+        elif turnover_rate >= 4:
+            performance_level = "🟡 Good"
+            performance_desc = "Your inventory turnover is within good range"
+        else:
+            performance_level = "🔴 Needs Improvement"
+            performance_desc = "Your inventory turnover could be optimized"
+        
+        # Get top products for inventory insights
+        top_products_text = ""
+        if products:
+            top_products_text = "\n**Top Products by Revenue**:\n"
+            for i, product in enumerate(products[:5], 1):
+                revenue = product.get("revenue", 0)
+                product_name = product.get("product", "Unknown Product")
+                top_products_text += f"{i}. **{product_name}**: ${revenue:,.0f}\n"
+        
+        return f"""🔄 **Inventory Turnover Analysis**
 
-**What is Inventory Turnover?**
-Inventory turnover measures how many times you sell and replace your inventory in a given period.
+**Your Performance**: {performance_level}
+**Turnover Rate**: **{turnover_rate:.1f}x** annually
+**Monthly Sales**: **${monthly_sales:,.0f}**
+**Estimated Inventory**: **${estimated_inventory:,.0f}**
 
-**Calculation**: Cost of Goods Sold ÷ Average Inventory
+**Analysis**: {performance_desc}
+
+**Key Metrics**:
+- Total Sales: **${total_sales:,.0f}**
+- Total Orders: **{total_orders:,}**
+- Average Order Value: **${avg_order_value:.0f}**
+- Sales Velocity: **${monthly_sales:,.0f}/month**
+
+{top_products_text}
 
 **Industry Benchmarks**:
 - 🟢 **Excellent**: 6+ times annually
 - 🟡 **Good**: 4-6 times annually  
 - 🔴 **Needs Improvement**: <4 times annually
 
-**Optimization Strategies**:
-1. **📊 Demand Forecasting**: Predict seasonal demand patterns
-2. **📦 Just-in-Time**: Reduce excess inventory
-3. **🎯 ABC Analysis**: Focus on high-value items
-4. **🔄 Supplier Management**: Optimize lead times
+**Recommendations**:
+1. **📊 Demand Forecasting**: Analyze your {len(trend_points)} months of trend data
+2. **📦 Just-in-Time**: Consider reducing inventory to {monthly_sales:,.0f} monthly average
+3. **🎯 ABC Analysis**: Focus on your top performing products
+4. **🔄 Supplier Management**: Optimize lead times based on sales velocity
 
 **Technology Solutions**:
 - 📱 **Inventory Management Systems**: Real-time tracking
@@ -1355,21 +1471,101 @@ Inventory turnover measures how many times you sell and replace your inventory i
 
     def _answer_seasonal_planning(self, context: Dict, results: Dict) -> str:
         """Generate seasonal planning analysis."""
-        return """📅 **Seasonal Planning Analysis**
+        # Extract data from results
+        trend_data = results.get("trend", {})
+        if "table" in trend_data:
+            trend_df = trend_data["table"]
+            if isinstance(trend_df, pd.DataFrame) and not trend_df.empty:
+                trend_points = trend_df.to_dict('records')
+            else:
+                trend_points = []
+        else:
+            trend_points = trend_data.get("trend", [])
+        
+        kpis_data = results.get("kpis", {})
+        if isinstance(kpis_data, dict) and "kpis" in kpis_data:
+            kpis = kpis_data["kpis"]
+        else:
+            kpis = kpis_data
+        
+        # Analyze seasonal patterns
+        if len(trend_points) >= 6:
+            # Calculate monthly averages and identify peaks
+            monthly_data = {}
+            for point in trend_points:
+                month = point.get("month", "")
+                revenue = point.get("revenue", 0)
+                if month:
+                    if month not in monthly_data:
+                        monthly_data[month] = []
+                    monthly_data[month].append(revenue)
+            
+            # Calculate average revenue by month
+            monthly_avg = {}
+            for month, revenues in monthly_data.items():
+                monthly_avg[month] = sum(revenues) / len(revenues)
+            
+            # Find peak and low seasons
+            if monthly_avg:
+                max_month = max(monthly_avg, key=monthly_avg.get)
+                min_month = min(monthly_avg, key=monthly_avg.get)
+                max_revenue = monthly_avg[max_month]
+                min_revenue = monthly_avg[min_month]
+                
+                # Calculate seasonal variation
+                if min_revenue > 0:
+                    seasonal_variation = ((max_revenue - min_revenue) / min_revenue) * 100
+                else:
+                    seasonal_variation = 0
+                
+                # Determine seasonal strength
+                if seasonal_variation >= 50:
+                    seasonal_strength = "🔴 Strong"
+                    seasonal_desc = "Your business shows strong seasonal patterns"
+                elif seasonal_variation >= 25:
+                    seasonal_strength = "🟡 Moderate"
+                    seasonal_desc = "Your business shows moderate seasonal patterns"
+                else:
+                    seasonal_strength = "🟢 Minimal"
+                    seasonal_desc = "Your business shows minimal seasonal patterns"
+                
+                # Create seasonal insights
+                seasonal_insights = f"""
+**Seasonal Analysis**:
+- **Peak Season**: {max_month} (${max_revenue:,.0f} avg)
+- **Low Season**: {min_month} (${min_revenue:,.0f} avg)
+- **Seasonal Variation**: {seasonal_variation:.1f}%
+- **Pattern Strength**: {seasonal_strength}
 
-**Understanding Seasonal Patterns**:
-Seasonal planning helps retailers prepare for predictable demand fluctuations throughout the year.
+**Seasonal Insights**: {seasonal_desc}
+"""
+            else:
+                seasonal_insights = "**Seasonal Analysis**: Insufficient data for seasonal pattern analysis"
+        else:
+            seasonal_insights = f"**Seasonal Analysis**: Need at least 6 months of data (currently have {len(trend_points)})"
+        
+        # Get total sales for context
+        total_sales = kpis.get("total_sales", 0) if kpis else 0
+        
+        return f"""📅 **Seasonal Planning Analysis**
+
+{seasonal_insights}
+
+**Your Data Context**:
+- **Total Sales**: ${total_sales:,.0f}
+- **Trend Data**: {len(trend_points)} months available
+- **Analysis Period**: {trend_points[0].get('month', 'Start')} to {trend_points[-1].get('month', 'End') if trend_points else 'N/A'}
 
 **Seasonal Planning Framework**:
 
 **1. 📊 Historical Analysis**
-- **Sales Patterns**: Analyze past seasonal performance
-- **Demand Peaks**: Identify high-demand periods
+- **Sales Patterns**: Analyze your {len(trend_points)} months of performance
+- **Demand Peaks**: Identify high-demand periods from your data
 - **Inventory Cycles**: Track seasonal inventory needs
 - **Customer Behavior**: Understand seasonal preferences
 
 **2. 🎯 Forecasting & Planning**
-- **Demand Prediction**: Estimate future seasonal demand
+- **Demand Prediction**: Use your trend data for future demand
 - **Inventory Planning**: Prepare for seasonal requirements
 - **Staff Scheduling**: Align workforce with demand
 - **Marketing Planning**: Seasonal campaign preparation
@@ -1408,10 +1604,93 @@ Seasonal planning helps retailers prepare for predictable demand fluctuations th
 
     def _answer_promotional_effectiveness(self, context: Dict, results: Dict) -> str:
         """Generate promotional effectiveness analysis."""
-        return """🎯 **Promotional Effectiveness Analysis**
+        # Extract data from results
+        kpis_data = results.get("kpis", {})
+        if isinstance(kpis_data, dict) and "kpis" in kpis_data:
+            kpis = kpis_data["kpis"]
+        else:
+            kpis = kpis_data
+        
+        trend_data = results.get("trend", {})
+        if "table" in trend_data:
+            trend_df = trend_data["table"]
+            if isinstance(trend_df, pd.DataFrame) and not trend_df.empty:
+                trend_points = trend_df.to_dict('records')
+            else:
+                trend_points = []
+        else:
+            trend_points = trend_data.get("trend", [])
+        
+        # Get channel data for promotional analysis
+        channels_data = results.get("top_channels", {})
+        if "table" in channels_data:
+            channels_df = channels_data["table"]
+            if isinstance(channels_df, pd.DataFrame) and not channels_df.empty:
+                channels = channels_df.to_dict('records')
+            else:
+                channels = []
+        else:
+            channels = channels_data.get("channels", [])
+        
+        # Calculate promotional metrics
+        total_sales = kpis.get("total_sales", 0) if kpis else 0
+        total_orders = kpis.get("total_orders", 0) if kpis else 0
+        avg_order_value = kpis.get("avg_order_value", 0) if kpis else 0
+        total_customers = kpis.get("total_customers", 0) if kpis else 0
+        
+        # Calculate conversion rate
+        conversion_rate = (total_orders / total_customers * 100) if total_customers > 0 else 0
+        
+        # Analyze trend patterns for promotional insights
+        promotional_insights = ""
+        if len(trend_points) >= 3:
+            # Find highest and lowest revenue months
+            revenue_by_month = [(point.get("revenue", 0), point.get("month", "")) for point in trend_points]
+            revenue_by_month.sort(reverse=True)
+            
+            highest_month = revenue_by_month[0]
+            lowest_month = revenue_by_month[-1]
+            
+            # Calculate revenue variation
+            if lowest_month[0] > 0:
+                revenue_variation = ((highest_month[0] - lowest_month[0]) / lowest_month[0]) * 100
+            else:
+                revenue_variation = 0
+            
+            promotional_insights = f"""
+**Promotional Performance Analysis**:
+- **Best Month**: {highest_month[1]} (${highest_month[0]:,.0f})
+- **Lowest Month**: {lowest_month[1]} (${lowest_month[0]:,.0f})
+- **Revenue Variation**: {revenue_variation:.1f}%
+- **Analysis Period**: {len(trend_points)} months
 
-**Measuring Promotional Success**:
-Understanding which promotions drive results helps optimize marketing spend and increase ROI.
+**Promotional Opportunities**:
+- **Peak Performance**: {highest_month[1]} shows your best performance
+- **Growth Potential**: {lowest_month[1]} has room for promotional campaigns
+- **Seasonal Patterns**: {revenue_variation:.1f}% variation suggests promotional opportunities
+"""
+        
+        # Channel performance for promotional insights
+        channel_insights = ""
+        if channels:
+            channel_insights = "\n**Channel Performance for Promotions**:\n"
+            for i, channel in enumerate(channels[:3], 1):
+                revenue = channel.get("revenue", 0)
+                channel_name = channel.get("channel", "Unknown Channel")
+                channel_insights += f"{i}. **{channel_name}**: ${revenue:,.0f}\n"
+        
+        return f"""🎯 **Promotional Effectiveness Analysis**
+
+{promotional_insights}
+
+**Your Promotional Metrics**:
+- **Total Sales**: ${total_sales:,.0f}
+- **Total Orders**: {total_orders:,}
+- **Average Order Value**: ${avg_order_value:.0f}
+- **Total Customers**: {total_customers:,}
+- **Conversion Rate**: {conversion_rate:.1f}%
+
+{channel_insights}
 
 **Key Promotional Metrics**:
 - 📊 **Conversion Rate**: Promotional offer effectiveness
@@ -1615,7 +1894,89 @@ Understanding which promotions drive results helps optimize marketing spend and 
 
     def _answer_mrr_growth(self, context: Dict, results: Dict) -> str:
         """Generate SaaS MRR growth analysis."""
-        return """📈 **Monthly Recurring Revenue (MRR) Growth Analysis**
+        # Extract data from results
+        kpis_data = results.get("kpis", {})
+        if isinstance(kpis_data, dict) and "kpis" in kpis_data:
+            kpis = kpis_data["kpis"]
+        else:
+            kpis = kpis_data
+        
+        trend_data = results.get("trend", {})
+        if "table" in trend_data:
+            trend_df = trend_data["table"]
+            if isinstance(trend_df, pd.DataFrame) and not trend_df.empty:
+                trend_points = trend_df.to_dict('records')
+            else:
+                trend_points = []
+        else:
+            trend_points = trend_data.get("trend", [])
+        
+        # Calculate MRR growth metrics
+        total_sales = kpis.get("total_sales", 0) if kpis else 0
+        total_orders = kpis.get("total_orders", 0) if kpis else 0
+        avg_order_value = kpis.get("avg_order_value", 0) if kpis else 0
+        
+        # Calculate MRR growth from trend data
+        mrr_analysis = ""
+        if len(trend_points) >= 3:
+            # Calculate monthly growth rates
+            growth_rates = []
+            for i in range(1, len(trend_points)):
+                current = trend_points[i].get("revenue", 0)
+                previous = trend_points[i-1].get("revenue", 0)
+                if previous > 0:
+                    growth_rate = ((current - previous) / previous) * 100
+                    growth_rates.append(growth_rate)
+            
+            if growth_rates:
+                avg_growth_rate = sum(growth_rates) / len(growth_rates)
+                latest_growth = growth_rates[-1] if growth_rates else 0
+                
+                # Determine growth performance
+                if avg_growth_rate >= 15:
+                    growth_performance = "🟢 Excellent"
+                    growth_desc = "Your MRR growth is above industry standards"
+                elif avg_growth_rate >= 10:
+                    growth_performance = "🟡 Good"
+                    growth_desc = "Your MRR growth is within good range"
+                else:
+                    growth_performance = "🔴 Needs Improvement"
+                    growth_desc = "Your MRR growth could be optimized"
+                
+                mrr_analysis = f"""
+**MRR Growth Analysis**:
+- **Average Monthly Growth**: {avg_growth_rate:.1f}%
+- **Latest Month Growth**: {latest_growth:.1f}%
+- **Growth Performance**: {growth_performance}
+- **Analysis Period**: {len(trend_points)} months
+
+**Growth Insights**: {growth_desc}
+
+**Monthly Growth Breakdown**:
+"""
+                for i, rate in enumerate(growth_rates[-6:], 1):  # Show last 6 months
+                    month_name = trend_points[i].get("month", f"Month {i}")
+                    mrr_analysis += f"- {month_name}: {rate:+.1f}%\n"
+        
+        # Get customer data for SaaS metrics
+        total_customers = kpis.get("total_customers", 0) if kpis else 0
+        repeat_rate = results.get("repeat_rate", {}).get("repeat_rate", 0)
+        
+        # Calculate SaaS-specific metrics
+        churn_rate = 100 - repeat_rate if repeat_rate > 0 else 0
+        ltv_cac_ratio = 3.0  # Placeholder - would need actual CAC data
+        
+        return f"""📈 **Monthly Recurring Revenue (MRR) Growth Analysis**
+
+{mrr_analysis}
+
+**Your SaaS Metrics**:
+- **Total Revenue**: ${total_sales:,.0f}
+- **Total Orders**: {total_orders:,}
+- **Average Order Value**: ${avg_order_value:.0f}
+- **Total Customers**: {total_customers:,}
+- **Estimated Churn Rate**: {churn_rate:.1f}%
+- **Repeat Rate**: {repeat_rate:.1f}%
 
 **What is MRR?**
 MRR is the predictable revenue generated from subscriptions each month.
@@ -1638,8 +1999,8 @@ MRR is the predictable revenue generated from subscriptions each month.
 4. **💰 Pricing**: Optimize pricing strategies
 
 **Key SaaS Metrics**:
-- **Churn Rate**: Target <5% monthly
-- **LTV/CAC Ratio**: Target >3:1
+- **Churn Rate**: Target <5% monthly (Your rate: {churn_rate:.1f}%)
+- **LTV/CAC Ratio**: Target >3:1 (Estimated: {ltv_cac_ratio:.1f}:1)
 - **Payback Period**: Target <12 months
 - **Net Revenue Retention**: Target >100%
 
@@ -2384,7 +2745,7 @@ Liquidity measures how easily buyers and sellers can complete transactions on yo
 5. **Long-term Perspective**: Build sustainable liquidity foundation"""
 
     def get_available_questions(self, context: Dict, results: Dict) -> Dict[str, Dict]:
-        """Get questions filtered by available data context."""
+        """Get questions filtered by available data context and industry."""
         all_questions = self._build_question_catalog()
         available_questions = {}
         
@@ -2392,6 +2753,10 @@ Liquidity measures how easily buyers and sellers can complete transactions on yo
         context_analysis = self._analyze_context_availability(context, results)
         
         for category_key, category in all_questions.items():
+            # Filter categories based on industry
+            if not self._is_category_available_for_industry(category_key):
+                continue
+                
             available_questions_in_category = {}
             
             for q_id, question in category["questions"].items():
@@ -2417,6 +2782,21 @@ Liquidity measures how easily buyers and sellers can complete transactions on yo
                 }
         
         return available_questions
+    
+    def _is_category_available_for_industry(self, category_key: str) -> bool:
+        """Check if a category should be shown for the current industry."""
+        # Industry-specific category mapping
+        industry_categories = {
+            "generic": ["performance", "customers", "products", "operations", "strategy"],
+            "retail": ["performance", "customers", "products", "operations", "strategy", "retail_specific"],
+            "saas": ["performance", "customers", "products", "operations", "strategy", "saas_specific"],
+            "marketplace": ["performance", "customers", "products", "operations", "strategy", "marketplace_specific"]
+        }
+        
+        # Get available categories for current industry
+        available_categories = industry_categories.get(self.industry, industry_categories["generic"])
+        
+        return category_key in available_categories
     
     def _analyze_context_availability(self, context: Dict, results: Dict) -> Dict[str, bool]:
         """Analyze what data is available in the context."""
@@ -2474,10 +2854,17 @@ Liquidity measures how easily buyers and sellers can complete transactions on yo
                 analysis["channel_count"] = len(channels_df)
         
         # Check other data types
-        analysis["has_forecast"] = bool(results.get("forecast", {}).get("forecast"))
-        analysis["has_cohorts"] = bool(results.get("cohorts", {}).get("table"))
-        analysis["has_rfm"] = bool(results.get("rfm", {}).get("table"))
-        analysis["has_repeat_rate"] = bool(results.get("repeat_rate", {}).get("repeat_rate"))
+        forecast_data = results.get("forecast", {}).get("forecast")
+        analysis["has_forecast"] = isinstance(forecast_data, pd.DataFrame) and not forecast_data.empty if forecast_data is not None else False
+        
+        cohorts_data = results.get("cohorts", {}).get("table")
+        analysis["has_cohorts"] = isinstance(cohorts_data, pd.DataFrame) and not cohorts_data.empty if cohorts_data is not None else False
+        
+        rfm_data = results.get("rfm", {}).get("table")
+        analysis["has_rfm"] = isinstance(rfm_data, pd.DataFrame) and not rfm_data.empty if rfm_data is not None else False
+        
+        repeat_rate_data = results.get("repeat_rate", {}).get("repeat_rate")
+        analysis["has_repeat_rate"] = repeat_rate_data is not None and repeat_rate_data > 0 if repeat_rate_data is not None else False
         
         return analysis
     
