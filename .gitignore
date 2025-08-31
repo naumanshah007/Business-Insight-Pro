@@ -122,3 +122,5 @@ Thumbs.db
 # Project specific
 *.html
 !omniinsights_report.html
+node_modules
+node_modules
